@@ -38,7 +38,7 @@ async def get_products(
             await cache.set("count", len(products))
             for item in products:
                 await cache.redis_client.rpush("products", json.dumps(item))
-            await cache.redis_client.expire("products", 600)
+            await cache.redis_client.expire("products", 300)
             products = products[start:end]
 
         count = await cache.get("count")
@@ -54,7 +54,7 @@ async def get_products(
             await cache.set("count", len(products))
             for item in products:
                 await cache.redis_client.rpush("products", json.dumps(item))
-            await cache.redis_client.expire("products", 600)
+            await cache.redis_client.expire("products", 300)
 
         products = [item for item in all_products if search.lower() in item["name"].lower()]
         result["count"] = len(products)
