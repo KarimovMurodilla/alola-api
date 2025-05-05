@@ -61,3 +61,11 @@ class BillzService:
                         products[obj['parent_id']] = obj
             
             return list(products.values())
+
+
+    async def get_order(self, order_id: str):
+        url = f"https://alola.billz.io/api/v2/order/{order_id}"
+        
+        async with self.client as client:
+            data = await client.get(url)
+            return data

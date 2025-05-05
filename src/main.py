@@ -1,5 +1,5 @@
 import uvicorn
-import aioredis
+from redis import asyncio as aioredis
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
