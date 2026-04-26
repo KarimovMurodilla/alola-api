@@ -1,12 +1,9 @@
 import json
-import redis
+
+from typing import List
 
 from fastapi import APIRouter
-from fastapi_cache.decorator import cache
 
-from api.dependencies import UOWDep
-
-from schemas.users import UserSchemaEdit
 from services.products import BillzService
 from utils.cache import Cache
 
@@ -63,3 +60,26 @@ async def get_products(
     result["products"] = products
 
     return result
+
+
+@router.get("/categories")
+async def get_categories():
+    cache = Cache()
+    cached = await cache.get("categories")
+
+    if cached:
+        return {"categories": json.loads(cached)}
+
+    categories = await BillzService().get_categories()
+    await cache.set("categories", json.dumps(categories), ex=300)
+    return {"categories": categories}
+
+
+@router.post("/by-category")
+async def get_products_by_category(
+    category_ids: List[str],
+    limit: int = 10,
+    page: int = 1,
+):
+    data = await BillzService().get_products_by_category(category_ids, limit, page)
+    return data

@@ -63,6 +63,25 @@ class BillzService:
             return list(products.values())
 
 
+    async def get_categories(self):
+        url = 'https://api-admin.billz.ai/v2/category'
+
+        async with self.client as client:
+            data = await client.get(url)
+            return data.get('categories', [])
+
+    async def get_products_by_category(self, category_ids: list[str], limit: int, page: int):
+        url = 'https://api-admin.billz.ai/v2/product-search-with-filters'
+        payload = {
+            "category_ids": category_ids,
+            "limit": limit,
+            "page": page,
+        }
+
+        async with self.client as client:
+            data = await client.post(url, payload)
+            return data
+
     async def get_order(self, order_id: str):
         url = f"https://alola.billz.io/api/v2/order/{order_id}"
         

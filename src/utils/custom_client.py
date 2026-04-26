@@ -1,8 +1,13 @@
 import aiohttp
 from aiohttp import ClientResponse
 
-import config as conf
 from utils.cache import Cache
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+BILLZ_SECRET_KEY = os.getenv("BILLZ_SECRET_KEY")
 
 class Client:
     def __init__(self):
@@ -29,10 +34,12 @@ class Client:
     
     async def login(self):
         url = 'https://api-admin.billz.ai/v1/auth/login'
-        payload = {"secret_token": conf.BILLZ_SECRET_KEY}
+        payload = {"secret_token": BILLZ_SECRET_KEY}
 
         async with self.session.post(url, json=payload) as response:
+            print(response)
             data = await response.json()
+            print(data)
             access_token = data.get('data').get('access_token')
             await self.update_access_token(access_token)
             self.session.headers.update({"Authorization": f"Bearer {access_token}"})
