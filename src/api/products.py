@@ -81,5 +81,30 @@ async def get_products_by_category(
     limit: int = 10,
     page: int = 1,
 ):
-    data = await BillzService().get_products_by_category(category_ids, limit, page)
-    return data
+    start = (page - 1) * limit
+    end = start + limit
+
+    cache = Cache()
+    result = {}
+
+    data = await cache.redis_client.lrange("products", 0, -1)
+    all_products = [json.loads(item) for item in data]
+    exists = await cache.exists("products")
+
+    if not exists:
+        all_products = await BillzService().get_products()
+        await cache.set("count", len(all_products))
+        for item in all_products:
+            await cache.redis_client.rpush("products", json.dumps(item))
+        await cache.redis_client.expire("products", 300)
+
+    category_ids_set = {str(category_id) for category_id in category_ids}
+    products = [
+        item
+        for item in all_products
+        if str(item.get("category_id", "")) in category_ids_set
+    ]
+    result["count"] = len(products)
+    result["products"] = products[start:end]
+
+    return result
