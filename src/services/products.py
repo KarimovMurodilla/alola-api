@@ -52,7 +52,7 @@ class BillzService:
 
             if not (
                 obj.get("parent_id")
-                and obj.get("main_image_url_full")
+                and obj.get("main_image_url")
                 and shop_measurement_values
                 and product_supplier_stock
                 and product_attributes
