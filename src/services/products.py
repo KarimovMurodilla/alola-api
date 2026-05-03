@@ -20,34 +20,61 @@ class BillzService:
     def _prepare_products(products_data: list[dict]):
         products = {}
         skipped = 0
+        skip_reasons = {
+            "missing_parent_id": 0,
+            "missing_main_image_url_full": 0,
+            "missing_product_supplier_stock": 0,
+            "missing_wholesale_price": 0,
+            "missing_shop_measurement_values": 0,
+            "missing_active_measurement_value": 0,
+            "missing_product_attributes": 0,
+        }
 
         if not products_data:
             logger.info("Products parse skipped: empty source list")
             return []
 
         for obj in products_data:
-            if (
-                obj.get('parent_id')
-                and obj.get('main_image_url_full')
-                and obj.get('product_supplier_stock')
-                and obj['product_supplier_stock'][0].get('wholesale_price')
-                and obj.get('shop_measurement_values')
-                and obj['shop_measurement_values'][0].get('active_measurement_value')
-                and obj.get('product_attributes')
-            ):
-                count = obj['shop_measurement_values'][0]['active_measurement_value']
-
-                if products.get(obj['parent_id']):
-                    product_attributes = obj['product_attributes'][0]
-                    product_attributes['max_count'] = count
-                    product_attributes['product_id'] = obj['id']
-                    products[obj['parent_id']]['product_attributes'].append(product_attributes)
-                else:
-                    obj['product_attributes'][0]['max_count'] = count
-                    obj['product_attributes'][0]['product_id'] = obj['id']
-                    products[obj['parent_id']] = obj
-            else:
+            if not obj.get("parent_id"):
+                skip_reasons["missing_parent_id"] += 1
                 skipped += 1
+                continue
+            if not obj.get("main_image_url_full"):
+                skip_reasons["missing_main_image_url_full"] += 1
+                skipped += 1
+                continue
+            if not obj.get("product_supplier_stock"):
+                skip_reasons["missing_product_supplier_stock"] += 1
+                skipped += 1
+                continue
+            if obj["product_supplier_stock"][0].get("wholesale_price") is None:
+                skip_reasons["missing_wholesale_price"] += 1
+                skipped += 1
+                continue
+            if not obj.get("shop_measurement_values"):
+                skip_reasons["missing_shop_measurement_values"] += 1
+                skipped += 1
+                continue
+            if obj["shop_measurement_values"][0].get("active_measurement_value") is None:
+                skip_reasons["missing_active_measurement_value"] += 1
+                skipped += 1
+                continue
+            if not obj.get("product_attributes"):
+                skip_reasons["missing_product_attributes"] += 1
+                skipped += 1
+                continue
+
+            count = obj["shop_measurement_values"][0]["active_measurement_value"]
+
+            if products.get(obj["parent_id"]):
+                product_attributes = obj["product_attributes"][0]
+                product_attributes["max_count"] = count
+                product_attributes["product_id"] = obj["id"]
+                products[obj["parent_id"]]["product_attributes"].append(product_attributes)
+            else:
+                obj["product_attributes"][0]["max_count"] = count
+                obj["product_attributes"][0]["product_id"] = obj["id"]
+                products[obj["parent_id"]] = obj
 
         logger.info(
             "Products parsed for /v2/products: raw=%s grouped=%s skipped=%s",
@@ -55,12 +82,23 @@ class BillzService:
             len(products),
             skipped,
         )
+        if skipped:
+            logger.info("Products skip reasons /v2/products: %s", skip_reasons)
         return list(products.values())
 
     @staticmethod
     def _prepare_products_by_category(products_data: list[dict]):
         products = {}
         skipped = 0
+        skip_reasons = {
+            "missing_parent_id": 0,
+            "missing_main_image_url": 0,
+            "missing_shop_measurement_values": 0,
+            "missing_product_supplier_stock": 0,
+            "missing_product_attributes": 0,
+            "missing_total_active_measurement_value": 0,
+            "missing_wholesale_price": 0,
+        }
 
         if not products_data:
             logger.info("Category products parse skipped: empty source list")
@@ -71,19 +109,35 @@ class BillzService:
             product_supplier_stock = obj.get("product_supplier_stock") or []
             product_attributes = obj.get("product_attributes") or []
 
-            if not (
-                obj.get("parent_id")
-                and obj.get("main_image_url")
-                and shop_measurement_values
-                and product_supplier_stock
-                and product_attributes
-            ):
+            if not obj.get("parent_id"):
+                skip_reasons["missing_parent_id"] += 1
+                skipped += 1
+                continue
+            if not obj.get("main_image_url"):
+                skip_reasons["missing_main_image_url"] += 1
+                skipped += 1
+                continue
+            if not shop_measurement_values:
+                skip_reasons["missing_shop_measurement_values"] += 1
+                skipped += 1
+                continue
+            if not product_supplier_stock:
+                skip_reasons["missing_product_supplier_stock"] += 1
+                skipped += 1
+                continue
+            if not product_attributes:
+                skip_reasons["missing_product_attributes"] += 1
                 skipped += 1
                 continue
 
             count = shop_measurement_values[0].get("total_active_measurement_value")
             wholesale_price = product_supplier_stock[0].get("wholesale_price")
-            if count is None or wholesale_price is None:
+            if count is None:
+                skip_reasons["missing_total_active_measurement_value"] += 1
+                skipped += 1
+                continue
+            if wholesale_price is None:
+                skip_reasons["missing_wholesale_price"] += 1
                 skipped += 1
                 continue
 
@@ -103,6 +157,11 @@ class BillzService:
             len(products),
             skipped,
         )
+        if skipped:
+            logger.info(
+                "Products skip reasons /product-search-with-filters: %s",
+                skip_reasons,
+            )
         return list(products.values())
     
     async def set_user(
