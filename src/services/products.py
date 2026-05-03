@@ -6,6 +6,75 @@ from utils.custom_client import Client
 class BillzService:
     def __init__(self):
         self.client = Client()
+
+    @staticmethod
+    def _prepare_products(products_data: list[dict]):
+        products = {}
+
+        if not products_data:
+            return []
+
+        for obj in products_data:
+            if (
+                obj.get('parent_id')
+                and obj.get('main_image_url_full')
+                and obj.get('product_supplier_stock')
+                and obj['product_supplier_stock'][0].get('wholesale_price')
+                and obj.get('shop_measurement_values')
+                and obj['shop_measurement_values'][0].get('active_measurement_value')
+                and obj.get('product_attributes')
+            ):
+                count = obj['shop_measurement_values'][0]['active_measurement_value']
+
+                if products.get(obj['parent_id']):
+                    product_attributes = obj['product_attributes'][0]
+                    product_attributes['max_count'] = count
+                    product_attributes['product_id'] = obj['id']
+                    products[obj['parent_id']]['product_attributes'].append(product_attributes)
+                else:
+                    obj['product_attributes'][0]['max_count'] = count
+                    obj['product_attributes'][0]['product_id'] = obj['id']
+                    products[obj['parent_id']] = obj
+
+        return list(products.values())
+
+    @staticmethod
+    def _prepare_products_by_category(products_data: list[dict]):
+        products = {}
+
+        if not products_data:
+            return []
+
+        for obj in products_data:
+            shop_measurement_values = obj.get("shop_measurement_values") or []
+            product_supplier_stock = obj.get("product_supplier_stock") or []
+            product_attributes = obj.get("product_attributes") or []
+
+            if not (
+                obj.get("parent_id")
+                and obj.get("main_image_url_full")
+                and shop_measurement_values
+                and product_supplier_stock
+                and product_attributes
+            ):
+                continue
+
+            count = shop_measurement_values[0].get("total_active_measurement_value")
+            wholesale_price = product_supplier_stock[0].get("wholesale_price")
+            if count is None or wholesale_price is None:
+                continue
+
+            if products.get(obj["parent_id"]):
+                attribute = product_attributes[0]
+                attribute["max_count"] = count
+                attribute["product_id"] = obj["id"]
+                products[obj["parent_id"]]["product_attributes"].append(attribute)
+            else:
+                obj["product_attributes"][0]["max_count"] = count
+                obj["product_attributes"][0]["product_id"] = obj["id"]
+                products[obj["parent_id"]] = obj
+
+        return list(products.values())
     
     async def set_user(
         self,
@@ -34,33 +103,7 @@ class BillzService:
         
         async with self.client as client:
             data = await client.get(url)
-            products = {}
-
-            if not data['products']:
-                return data
-            
-            for obj in data['products']:
-                if (
-                    obj['parent_id'] and obj['main_image_url_full'] and 
-                    obj['product_supplier_stock'] and 
-                    obj['product_supplier_stock'][0]['wholesale_price'] and 
-                    obj['shop_measurement_values'] and
-                    obj['shop_measurement_values'][0]['active_measurement_value']
-                ):
-                    count = obj['shop_measurement_values'][0]['active_measurement_value']
-
-                    if products.get(obj['parent_id']):
-                        product_attributes = obj['product_attributes'][0]
-                        product_attributes['max_count'] = count
-                        product_attributes['product_id'] = obj['id']
-                        products[obj['parent_id']]['product_attributes'].append(product_attributes)
-
-                    else:
-                        obj['product_attributes'][0]['max_count'] = count
-                        obj['product_attributes'][0]['product_id'] = obj['id']
-                        products[obj['parent_id']] = obj
-            
-            return list(products.values())
+            return self._prepare_products(data.get('products', []))
 
 
     async def get_categories(self):
@@ -80,7 +123,11 @@ class BillzService:
 
         async with self.client as client:
             data = await client.post(url, payload)
-            return data
+            products = self._prepare_products_by_category(data.get('products', []))
+            return {
+                "count": data.get("count", len(products)),
+                "products": products,
+            }
 
     async def get_order(self, order_id: str):
         url = f"https://alola.billz.io/api/v2/order/{order_id}"
