@@ -1,6 +1,15 @@
+import logging
 from typing import Optional
 
 from utils.custom_client import Client
+
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
+
+logger = logging.getLogger(__name__)
 
 
 class BillzService:
@@ -10,8 +19,10 @@ class BillzService:
     @staticmethod
     def _prepare_products(products_data: list[dict]):
         products = {}
+        skipped = 0
 
         if not products_data:
+            logger.info("Products parse skipped: empty source list")
             return []
 
         for obj in products_data:
@@ -35,14 +46,24 @@ class BillzService:
                     obj['product_attributes'][0]['max_count'] = count
                     obj['product_attributes'][0]['product_id'] = obj['id']
                     products[obj['parent_id']] = obj
+            else:
+                skipped += 1
 
+        logger.info(
+            "Products parsed for /v2/products: raw=%s grouped=%s skipped=%s",
+            len(products_data),
+            len(products),
+            skipped,
+        )
         return list(products.values())
 
     @staticmethod
     def _prepare_products_by_category(products_data: list[dict]):
         products = {}
+        skipped = 0
 
         if not products_data:
+            logger.info("Category products parse skipped: empty source list")
             return []
 
         for obj in products_data:
@@ -57,11 +78,13 @@ class BillzService:
                 and product_supplier_stock
                 and product_attributes
             ):
+                skipped += 1
                 continue
 
             count = shop_measurement_values[0].get("total_active_measurement_value")
             wholesale_price = product_supplier_stock[0].get("wholesale_price")
             if count is None or wholesale_price is None:
+                skipped += 1
                 continue
 
             if products.get(obj["parent_id"]):
@@ -74,6 +97,12 @@ class BillzService:
                 obj["product_attributes"][0]["product_id"] = obj["id"]
                 products[obj["parent_id"]] = obj
 
+        logger.info(
+            "Products parsed for /product-search-with-filters: raw=%s grouped=%s skipped=%s",
+            len(products_data),
+            len(products),
+            skipped,
+        )
         return list(products.values())
     
     async def set_user(
@@ -100,18 +129,24 @@ class BillzService:
 
     async def get_products(self):
         url = f'https://api-admin.billz.ai/v2/products?limit=4000&page=1' 
+        logger.info("Requesting products from Billz endpoint: %s", url)
         
         async with self.client as client:
             data = await client.get(url)
-            return self._prepare_products(data.get('products', []))
+            raw_products = data.get('products', [])
+            logger.info("Billz /v2/products response received: count=%s", len(raw_products))
+            return self._prepare_products(raw_products)
 
 
     async def get_categories(self):
         url = 'https://api-admin.billz.ai/v2/category'
+        logger.info("Requesting categories from Billz endpoint: %s", url)
 
         async with self.client as client:
             data = await client.get(url)
-            return data.get('categories', [])
+            categories = data.get('categories', [])
+            logger.info("Billz categories response received: count=%s", len(categories))
+            return categories
 
     async def get_products_by_category(self, category_ids: list[str], limit: int, page: int):
         url = 'https://api-admin.billz.ai/v2/product-search-with-filters'
@@ -120,10 +155,22 @@ class BillzService:
             "limit": limit,
             "page": page,
         }
+        logger.info(
+            "Requesting category products: categories=%s limit=%s page=%s",
+            len(category_ids),
+            limit,
+            page,
+        )
 
         async with self.client as client:
             data = await client.post(url, payload)
-            products = self._prepare_products_by_category(data.get('products', []))
+            raw_products = data.get('products', [])
+            logger.info(
+                "Billz /product-search-with-filters response received: api_count=%s raw_products=%s",
+                data.get("count"),
+                len(raw_products),
+            )
+            products = self._prepare_products_by_category(raw_products)
             return {
                 "count": data.get("count", len(products)),
                 "products": products,
