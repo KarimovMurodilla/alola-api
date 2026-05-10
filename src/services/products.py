@@ -21,7 +21,6 @@ class BillzService:
         products = {}
         skipped = 0
         skip_reasons = {
-            "missing_parent_id": 0,
             "missing_main_image_url_full": 0,
             "missing_product_supplier_stock": 0,
             "missing_wholesale_price": 0,
@@ -35,10 +34,6 @@ class BillzService:
             return []
 
         for obj in products_data:
-            if not obj.get("parent_id"):
-                skip_reasons["missing_parent_id"] += 1
-                skipped += 1
-                continue
             if not obj.get("main_image_url_full"):
                 skip_reasons["missing_main_image_url_full"] += 1
                 skipped += 1
@@ -65,16 +60,17 @@ class BillzService:
                 continue
 
             count = obj["shop_measurement_values"][0]["active_measurement_value"]
+            base_name = obj["name"].split(" / ")[0].strip()
 
-            if products.get(obj["parent_id"]):
+            if products.get(base_name):
                 product_attributes = obj["product_attributes"][0]
                 product_attributes["max_count"] = count
                 product_attributes["product_id"] = obj["id"]
-                products[obj["parent_id"]]["product_attributes"].append(product_attributes)
+                products[base_name]["product_attributes"].append(product_attributes)
             else:
                 obj["product_attributes"][0]["max_count"] = count
                 obj["product_attributes"][0]["product_id"] = obj["id"]
-                products[obj["parent_id"]] = obj
+                products[base_name] = obj
 
         logger.info(
             "Products parsed for /v2/products: raw=%s grouped=%s skipped=%s",
@@ -91,7 +87,6 @@ class BillzService:
         products = {}
         skipped = 0
         skip_reasons = {
-            "missing_parent_id": 0,
             "missing_main_image_url": 0,
             "missing_shop_measurement_values": 0,
             "missing_product_supplier_stock": 0,
@@ -109,10 +104,6 @@ class BillzService:
             product_supplier_stock = obj.get("product_supplier_stock") or []
             product_attributes = obj.get("product_attributes") or []
 
-            if not obj.get("parent_id"):
-                skip_reasons["missing_parent_id"] += 1
-                skipped += 1
-                continue
             if not obj.get("main_image_url"):
                 skip_reasons["missing_main_image_url"] += 1
                 skipped += 1
@@ -141,15 +132,17 @@ class BillzService:
                 skipped += 1
                 continue
 
-            if products.get(obj["parent_id"]):
+            base_name = obj["name"].split(" / ")[0].strip()
+
+            if products.get(base_name):
                 attribute = product_attributes[0]
                 attribute["max_count"] = count
                 attribute["product_id"] = obj["id"]
-                products[obj["parent_id"]]["product_attributes"].append(attribute)
+                products[base_name]["product_attributes"].append(attribute)
             else:
                 obj["product_attributes"][0]["max_count"] = count
                 obj["product_attributes"][0]["product_id"] = obj["id"]
-                products[obj["parent_id"]] = obj
+                products[base_name] = obj
 
         logger.info(
             "Products parsed for /product-search-with-filters: raw=%s grouped=%s skipped=%s",
