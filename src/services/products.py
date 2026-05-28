@@ -216,7 +216,7 @@ class BillzService:
 
         async with self.client as client:
             data = await client.post(url, payload)
-            if not data:
+            if not data.get('products'):
                 return {"count": 0, "products": []}
             raw_products = data.get('products', [])
             logger.info(

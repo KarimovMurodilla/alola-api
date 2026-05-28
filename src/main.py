@@ -39,7 +39,7 @@ async def log_requests(request: Request, call_next):
     logger.info(
         "%s %s -> %s (%.1fms)",
         request.method,
-        request.url.path,
+        str(request.url),
         response.status_code,
         duration,
     )
