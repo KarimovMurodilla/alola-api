@@ -42,8 +42,6 @@ async def get_products(
         result["count"] = int(count)
 
     else:
-        data = await cache.redis_client.lrange("products", 0, -1)
-        all_products = [json.loads(item) for item in data]
         exists = await cache.exists("products")
 
         if not exists:
@@ -53,6 +51,8 @@ async def get_products(
                 await cache.redis_client.rpush("products", json.dumps(item))
             await cache.redis_client.expire("products", 300)
 
+        data = await cache.redis_client.lrange("products", 0, -1)
+        all_products = [json.loads(item) for item in data]
         products = [item for item in all_products if search.lower() in item["name"].lower()]
         result["count"] = len(products)
         products = products[start:end]
