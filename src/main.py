@@ -1,8 +1,12 @@
+import time
+import logging
 import uvicorn
 from redis import asyncio as aioredis
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger(__name__)
 
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
@@ -26,6 +30,20 @@ origins = [
     FRONTEND_BASE_URL,
     "http://localhost:3000"
 ]
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration = (time.time() - start) * 1000
+    logger.info(
+        "%s %s -> %s (%.1fms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration,
+    )
+    return response
 
 app.add_middleware(
     CORSMiddleware,

@@ -216,6 +216,8 @@ class BillzService:
 
         async with self.client as client:
             data = await client.post(url, payload)
+            if not data:
+                return {"count": 0, "products": []}
             raw_products = data.get('products', [])
             logger.info(
                 "Billz /product-search-with-filters response received: api_count=%s raw_products=%s",
