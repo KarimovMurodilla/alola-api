@@ -232,7 +232,56 @@ class BillzService:
 
     async def get_order(self, order_id: str):
         url = f"https://alola.billz.io/api/v2/order/{order_id}"
-        
+
+        async with self.client as client:
+            data = await client.get(url)
+            return data
+
+    async def create_order(self, shop_id: str):
+        url = "https://api-admin.billz.ai/v1/orders"
+        payload = {
+            "method": "order.create",
+            "params": {
+                "shop_id": shop_id,
+            },
+        }
+        logger.info("Creating order on Billz: shop_id=%s", shop_id)
+
+        async with self.client as client:
+            data = await client.post(url, payload)
+            return data
+
+    async def add_order_product(
+        self,
+        product_id: str,
+        seller_ids: list[str],
+        sold_measurement_value: float = 1,
+        used_wholesale_price: bool = True,
+        is_manual: bool = False,
+    ):
+        url = "https://api-admin.billz.ai/v2/order-product/"
+        payload = {
+            "product_id": product_id,
+            "sold_measurement_value": sold_measurement_value,
+            "used_wholesale_price": used_wholesale_price,
+            "is_manual": is_manual,
+            "seller_ids": seller_ids,
+            "response_type": "HTTP",
+        }
+        logger.info(
+            "Adding product to order on Billz: product_id=%s sellers=%s",
+            product_id,
+            len(seller_ids),
+        )
+
+        async with self.client as client:
+            data = await client.post(url, payload)
+            return data
+
+    async def get_client(self, chat_id: str):
+        url = f"https://api-admin.billz.ai/v1/client?chat_id={chat_id}"
+        logger.info("Requesting client from Billz: chat_id=%s", chat_id)
+
         async with self.client as client:
             data = await client.get(url)
             return data
