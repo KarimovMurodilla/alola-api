@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -12,6 +12,10 @@ router = APIRouter(
 )
 
 
+class LoginSchema(BaseModel):
+    secret_token: Optional[str] = None
+
+
 class OrderCreateSchema(BaseModel):
     shop_id: str
 
@@ -22,6 +26,13 @@ class OrderProductSchema(BaseModel):
     sold_measurement_value: float = 1
     used_wholesale_price: bool = True
     is_manual: bool = False
+
+
+@router.post("/auth/login")
+async def login(
+    body: LoginSchema,
+):
+    return await BillzService().login(body.secret_token)
 
 
 @router.post("/order/{order_id}")

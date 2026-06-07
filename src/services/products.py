@@ -1,7 +1,15 @@
 import logging
+import os
 from typing import Optional
 
+import aiohttp
+from dotenv import load_dotenv
+
 from utils.custom_client import Client
+
+load_dotenv()
+
+BILLZ_SECRET_KEY = os.getenv("BILLZ_SECRET_KEY")
 
 if not logging.getLogger().handlers:
     logging.basicConfig(
@@ -277,6 +285,19 @@ class BillzService:
         async with self.client as client:
             data = await client.post(url, payload)
             return data
+
+    async def login(self, secret_token: Optional[str] = None):
+        url = "https://api-admin.billz.ai/v1/auth/login"
+        payload = {"secret_token": secret_token or BILLZ_SECRET_KEY}
+        logger.info("Logging in to Billz via proxy")
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as response:
+                data = await response.json()
+                access_token = (data.get("data") or {}).get("access_token")
+                if access_token:
+                    await self.client.update_access_token(access_token)
+                return data
 
     async def get_client(self, chat_id: str):
         url = f"https://api-admin.billz.ai/v1/client?chat_id={chat_id}"
