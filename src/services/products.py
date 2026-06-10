@@ -261,13 +261,17 @@ class BillzService:
 
     async def add_order_product(
         self,
+        order_id: str,
         product_id: str,
         seller_ids: list[str],
         sold_measurement_value: float = 1,
         used_wholesale_price: bool = True,
         is_manual: bool = False,
     ):
-        url = "https://api-admin.billz.ai/v2/order-product/"
+        url = (
+            f"https://api-admin.billz.ai/v2/order-product/{order_id}"
+            "?Billz-Response-Channel=HTTP"
+        )
         payload = {
             "product_id": product_id,
             "sold_measurement_value": sold_measurement_value,
@@ -277,7 +281,8 @@ class BillzService:
             "response_type": "HTTP",
         }
         logger.info(
-            "Adding product to order on Billz: product_id=%s sellers=%s",
+            "Adding product to order on Billz: order_id=%s product_id=%s sellers=%s",
+            order_id,
             product_id,
             len(seller_ids),
         )

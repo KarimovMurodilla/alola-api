@@ -69,11 +69,13 @@ async def create_order(
     return await BillzService().create_order(body.shop_id)
 
 
-@router.post("/order-product")
+@router.post("/order-product/{order_id}")
 async def add_order_product(
+    order_id: str,
     body: OrderProductSchema,
 ):
     return await BillzService().add_order_product(
+        order_id=order_id,
         product_id=body.product_id,
         seller_ids=body.seller_ids,
         sold_measurement_value=body.sold_measurement_value,
