@@ -286,6 +286,36 @@ class BillzService:
             data = await client.post(url, payload)
             return data
 
+    async def complete_order(
+        self,
+        order_id: str,
+        payments: list[dict],
+        comment: Optional[str] = None,
+        with_cashback: int = 0,
+        without_cashback: bool = False,
+        skip_ofd: bool = False,
+    ):
+        url = (
+            f"https://api-admin.billz.ai/v2/order-payment/{order_id}"
+            "?Billz-Response-Channel=HTTP"
+        )
+        payload = {
+            "payments": payments,
+            "comment": comment or "",
+            "with_cashback": with_cashback,
+            "without_cashback": without_cashback,
+            "skip_ofd": skip_ofd,
+        }
+        logger.info(
+            "Completing sale on Billz: order_id=%s payments=%s",
+            order_id,
+            len(payments),
+        )
+
+        async with self.client as client:
+            data = await client.post(url, payload)
+            return data
+
     async def login(self, secret_token: Optional[str] = None):
         url = "https://api-admin.billz.ai/v1/auth/login"
         payload = {"secret_token": secret_token or BILLZ_SECRET_KEY}

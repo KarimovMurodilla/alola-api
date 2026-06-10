@@ -28,6 +28,25 @@ class OrderProductSchema(BaseModel):
     is_manual: bool = False
 
 
+class PaymentTypeSchema(BaseModel):
+    name: str
+
+
+class PaymentSchema(BaseModel):
+    company_payment_type_id: str
+    paid_amount: float
+    company_payment_type: Optional[PaymentTypeSchema] = None
+    returned_amount: float = 0
+
+
+class OrderCompleteSchema(BaseModel):
+    payments: List[PaymentSchema]
+    comment: Optional[str] = None
+    with_cashback: int = 0
+    without_cashback: bool = False
+    skip_ofd: bool = False
+
+
 @router.post("/auth/login")
 async def login(
     body: LoginSchema,
@@ -60,6 +79,21 @@ async def add_order_product(
         sold_measurement_value=body.sold_measurement_value,
         used_wholesale_price=body.used_wholesale_price,
         is_manual=body.is_manual,
+    )
+
+
+@router.post("/order-payment/{order_id}")
+async def complete_order(
+    order_id: str,
+    body: OrderCompleteSchema,
+):
+    return await BillzService().complete_order(
+        order_id=order_id,
+        payments=[p.model_dump() for p in body.payments],
+        comment=body.comment,
+        with_cashback=body.with_cashback,
+        without_cashback=body.without_cashback,
+        skip_ofd=body.skip_ofd,
     )
 
 
