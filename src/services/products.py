@@ -188,14 +188,18 @@ class BillzService:
             await client.post(url, payload)
 
     async def get_products(self):
-        url = f'https://api-admin.billz.ai/v2/products?limit=4000&page=1' 
+        url = f'https://api-admin.billz.ai/v2/products?limit=500&page=1' 
         logger.info("Requesting products from Billz endpoint: %s", url)
         
-        async with self.client as client:
-            data = await client.get(url)
-            raw_products = data.get('products', [])
-            logger.info("Billz /v2/products response received: count=%s", len(raw_products))
-            return self._prepare_products(raw_products)
+        try:
+            async with self.client as client:
+                data = await client.get(url)
+                raw_products = data.get('products', [])
+                logger.info("Billz /v2/products response received: count=%s", len(raw_products))
+                return self._prepare_products(raw_products)
+        except Exception as e:
+            logger.error("Error occurred while fetching products: %s", str(e))
+            raise
 
 
     async def get_categories(self):
