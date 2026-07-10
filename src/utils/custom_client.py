@@ -1,3 +1,5 @@
+import logging
+
 import aiohttp
 from aiohttp import ClientResponse
 
@@ -9,18 +11,22 @@ load_dotenv()
 
 BILLZ_SECRET_KEY = os.getenv("BILLZ_SECRET_KEY")
 
+logger = logging.getLogger(__name__)
+
 class Client:
     def __init__(self):
         self.cache = Cache()
-        self.session = aiohttp.ClientSession()
+        self.session = None
 
     async def __aenter__(self):
+        self.session = aiohttp.ClientSession()
         access_key = await self.get_access_token()
-        self.session.headers.setdefault("Authorization", f"Bearer {access_key}")
+        self.session.headers.update({"Authorization": f"Bearer {access_key}"})
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
         await self.session.close()
+        self.session = None
 
     async def update_access_token(self, access_token):
         await self.cache.set("ACCESS_TOKEN", access_token)
@@ -49,7 +55,13 @@ class Client:
             if response.status == 401:
                 await self.login()
                 return await self.post(url, payload)
-            
+
+            if response.status >= 400:
+                body = await response.text()
+                logger.error(
+                    "Billz POST %s -> %s: %s", url, response.status, body[:500]
+                )
+
             return await response.json()
 
     async def get(self, url: str) -> ClientResponse:
@@ -57,6 +69,12 @@ class Client:
             if response.status == 401:
                 await self.login()
                 return await self.get(url)
-            
+
+            if response.status >= 400:
+                body = await response.text()
+                logger.error(
+                    "Billz GET %s -> %s: %s", url, response.status, body[:500]
+                )
+
             return await response.json()
 
