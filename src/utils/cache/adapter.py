@@ -1,5 +1,4 @@
 """ This file contains the cache adapter """
-import asyncio
 from typing import Any, List, Optional, TypeVar, overload, final
 
 from redis.asyncio.client import Redis
@@ -9,15 +8,13 @@ import config as conf
 
 def build_redis_client() -> Redis:
     """Build redis client"""
-    client = Redis(
+    return Redis(
         host=conf.host,
         db=conf.db,
         port=conf.port,
         password=conf.passwd,
         username=conf.username,
     )
-    asyncio.create_task(client.ping())
-    return client
 
 
 class Cache:

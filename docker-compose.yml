@@ -4,6 +4,22 @@ services:
   redis:
     image: redis:7
     container_name: alola_api_redis_app
+    # Redis is used purely as a cache here. Disable RDB/AOF persistence so a
+    # full disk can never flip Redis into read-only "reject all writes" mode
+    # (MISCONF stop-writes-on-bgsave-error). Cap memory and evict LRU keys.
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --stop-writes-on-bgsave-error
+      - "no"
+      - --maxmemory
+      - "256mb"
+      - --maxmemory-policy
+      - "allkeys-lru"
+    restart: unless-stopped
 
   app:
     build:
