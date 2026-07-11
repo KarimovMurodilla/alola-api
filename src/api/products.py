@@ -110,31 +110,12 @@ async def get_products_by_category(
 
 @router.get("/{product_id}")
 async def get_product_detail(product_id: str):
-    """Return the full grouped product for a given Billz product id.
+    """Return the full grouped product (all variants) for a Billz product id.
 
-    Serves from the Redis 'products' cache when warm; on a cache miss/cold
-    cache it fetches fresh from Billz, repopulates the cache best-effort and
-    then resolves the product.
+    Fetched fresh from Billz: the general `/products` cache only holds a subset
+    of the catalog, so it can't be used to resolve an arbitrary product id.
     """
-    cache = Cache()
-
-    # Try the cache first; any Redis failure falls back to Billz directly.
-    try:
-        if await cache.exists("products"):
-            data = await cache.redis_client.lrange("products", 0, -1)
-            for item in data:
-                product = json.loads(item)
-                if BillzService._product_matches_id(product, product_id):
-                    return product
-    except RedisError as exc:
-        logger.warning("Redis unavailable reading product detail: %s", exc)
-
-    # Cache cold, unavailable, or product not present: fetch fresh from Billz.
-    all_products = await BillzService().get_products()
-    await _populate_cache(cache, all_products)
-
-    for product in all_products:
-        if BillzService._product_matches_id(product, product_id):
-            return product
-
-    raise HTTPException(status_code=404, detail="Product not found")
+    product = await BillzService().get_product_detail(product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product

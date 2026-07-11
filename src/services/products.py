@@ -165,23 +165,33 @@ class BillzService:
             )
         return list(products.values())
     
-    @staticmethod
-    def _product_matches_id(product: dict, product_id: str) -> bool:
-        """A grouped product matches if its top-level id or any variant matches."""
-        if product.get("id") == product_id:
-            return True
-        for attribute in product.get("product_attributes") or []:
-            if attribute.get("product_id") == product_id:
-                return True
-        return False
-
     async def get_product_detail(self, product_id: str) -> Optional[dict]:
-        """Fetch fresh from Billz and return the grouped product for product_id."""
-        products = await self.get_products()
-        for product in products:
-            if self._product_matches_id(product, product_id):
-                return product
-        return None
+        """Return the full grouped product (all variants) for a single variant id.
+
+        A Billz "product" is really a single variant; sibling variants share a
+        ``parent_id``. So we first resolve the requested variant to learn its
+        parent, then fetch the whole group and run it through the same grouping
+        used by the category listing. Returns ``None`` if no such product.
+        """
+        url = "https://api-admin.billz.ai/v2/product-search-with-filters"
+        logger.info("Requesting product detail: product_id=%s", product_id)
+
+        async with self.client as client:
+            data = await client.post(url, {"product_ids": [product_id], "limit": 1, "page": 1})
+            variants = data.get("products") or []
+            if not variants:
+                logger.info("Product detail not found on Billz: product_id=%s", product_id)
+                return None
+
+            parent_id = variants[0].get("parent_id")
+            if parent_id:
+                group = await client.post(url, {"parent_id": parent_id, "limit": 500, "page": 1})
+                raw_products = group.get("products") or variants
+            else:
+                raw_products = variants
+
+        products = self._prepare_products_by_category(raw_products)
+        return products[0] if products else None
 
     async def set_user(
         self,
