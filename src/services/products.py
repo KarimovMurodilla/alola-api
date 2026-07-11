@@ -165,6 +165,24 @@ class BillzService:
             )
         return list(products.values())
     
+    @staticmethod
+    def _product_matches_id(product: dict, product_id: str) -> bool:
+        """A grouped product matches if its top-level id or any variant matches."""
+        if product.get("id") == product_id:
+            return True
+        for attribute in product.get("product_attributes") or []:
+            if attribute.get("product_id") == product_id:
+                return True
+        return False
+
+    async def get_product_detail(self, product_id: str) -> Optional[dict]:
+        """Fetch fresh from Billz and return the grouped product for product_id."""
+        products = await self.get_products()
+        for product in products:
+            if self._product_matches_id(product, product_id):
+                return product
+        return None
+
     async def set_user(
         self,
         chat_id: str,

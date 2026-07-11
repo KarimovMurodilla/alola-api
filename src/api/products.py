@@ -3,7 +3,7 @@ import logging
 
 from typing import List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from redis.exceptions import RedisError
 
 from services.products import BillzService
@@ -106,3 +106,35 @@ async def get_products_by_category(
     page: int = 1,
 ):
     return await BillzService().get_products_by_category(category_ids, limit, page)
+
+
+@router.get("/{product_id}")
+async def get_product_detail(product_id: str):
+    """Return the full grouped product for a given Billz product id.
+
+    Serves from the Redis 'products' cache when warm; on a cache miss/cold
+    cache it fetches fresh from Billz, repopulates the cache best-effort and
+    then resolves the product.
+    """
+    cache = Cache()
+
+    # Try the cache first; any Redis failure falls back to Billz directly.
+    try:
+        if await cache.exists("products"):
+            data = await cache.redis_client.lrange("products", 0, -1)
+            for item in data:
+                product = json.loads(item)
+                if BillzService._product_matches_id(product, product_id):
+                    return product
+    except RedisError as exc:
+        logger.warning("Redis unavailable reading product detail: %s", exc)
+
+    # Cache cold, unavailable, or product not present: fetch fresh from Billz.
+    all_products = await BillzService().get_products()
+    await _populate_cache(cache, all_products)
+
+    for product in all_products:
+        if BillzService._product_matches_id(product, product_id):
+            return product
+
+    raise HTTPException(status_code=404, detail="Product not found")
