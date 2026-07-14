@@ -1,6 +1,7 @@
 import logging
 import os
 from typing import Optional
+from urllib.parse import quote
 
 import aiohttp
 from dotenv import load_dotenv
@@ -168,30 +169,37 @@ class BillzService:
     async def get_product_detail(self, product_id: str) -> Optional[dict]:
         """Return the full grouped product (all variants) for a single variant id.
 
-        A Billz "product" is really a single variant; sibling variants share a
-        ``parent_id``. So we first resolve the requested variant to learn its
-        parent, then fetch the whole group and run it through the same grouping
-        used by the category listing. Returns ``None`` if no such product.
+        Variants are merged by base name (the part before " / "), matching the
+        /products listing — grouping by ``parent_id`` would split products that
+        Billz stores under several parents (different SKUs) but the listing
+        shows as one card. Returns ``None`` if no such product.
         """
-        url = "https://api-admin.billz.ai/v2/product-search-with-filters"
+        search_url = "https://api-admin.billz.ai/v2/product-search-with-filters"
         logger.info("Requesting product detail: product_id=%s", product_id)
 
         async with self.client as client:
-            data = await client.post(url, {"product_ids": [product_id], "limit": 1, "page": 1})
+            data = await client.post(search_url, {"product_ids": [product_id], "limit": 1, "page": 1})
             variants = data.get("products") or []
             if not variants:
                 logger.info("Product detail not found on Billz: product_id=%s", product_id)
                 return None
 
-            parent_id = variants[0].get("parent_id")
-            if parent_id:
-                group = await client.post(url, {"parent_id": parent_id, "limit": 500, "page": 1})
-                raw_products = group.get("products") or variants
-            else:
-                raw_products = variants
+            base_name = variants[0]["name"].split(" / ")[0].strip()
+            group = await client.get(
+                f"https://api-admin.billz.ai/v2/products?limit=500&page=1&search={quote(base_name)}"
+            )
+            raw_products = group.get("products") or []
 
-        products = self._prepare_products_by_category(raw_products)
-        return products[0] if products else None
+        for product in self._prepare_products(raw_products):
+            if product["name"].split(" / ")[0].strip() == base_name:
+                return product
+
+        logger.info(
+            "Product group filtered out entirely: product_id=%s base_name=%s",
+            product_id,
+            base_name,
+        )
+        return None
 
     async def set_user(
         self,
@@ -216,14 +224,38 @@ class BillzService:
             await client.post(url, payload)
 
     async def get_products(self):
-        url = f'https://api-admin.billz.ai/v2/products?limit=500&page=1' 
-        logger.info("Requesting products from Billz endpoint: %s", url)
-        
+        """Fetch the whole catalog from Billz page by page and group it.
+
+        Billz choked on one huge request (hence the old limit drop from 4000
+        to 500), so we walk pages of 500 until the reported total is reached.
+        """
+        base_url = 'https://api-admin.billz.ai/v2/products'
+        page_size = 500
+        logger.info("Requesting full products catalog from Billz: %s", base_url)
+
         try:
             async with self.client as client:
-                data = await client.get(url)
-                raw_products = data.get('products', [])
-                logger.info("Billz /v2/products response received: count=%s", len(raw_products))
+                raw_products = []
+                page = 1
+                total = None
+                while True:
+                    data = await client.get(f'{base_url}?limit={page_size}&page={page}')
+                    batch = data.get('products') or []
+                    if total is None:
+                        total = data.get('count')
+                    raw_products.extend(batch)
+                    logger.info(
+                        "Billz /v2/products page received: page=%s batch=%s collected=%s total=%s",
+                        page,
+                        len(batch),
+                        len(raw_products),
+                        total,
+                    )
+                    if len(batch) < page_size:
+                        break
+                    if total is not None and len(raw_products) >= total:
+                        break
+                    page += 1
                 return self._prepare_products(raw_products)
         except Exception as e:
             logger.error("Error occurred while fetching products: %s", str(e))
