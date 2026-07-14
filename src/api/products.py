@@ -17,6 +17,34 @@ router = APIRouter(
     tags=["Products"],
 )
 
+# Redis list of pinned base names, newest pin first. No TTL: it is the owner's
+# manual ordering, not a cache of Billz data.
+PINNED_KEY = "pinned_products"
+
+
+def _base_name(name: str) -> str:
+    return name.split(" / ")[0].strip()
+
+
+async def _get_pinned_names(cache: Cache) -> list:
+    try:
+        data = await cache.redis_client.lrange(PINNED_KEY, 0, -1)
+        return [item.decode() for item in data]
+    except RedisError as exc:
+        logger.warning("Failed to read pinned products, keeping Billz order: %s", exc)
+        return []
+
+
+def _apply_pinned_order(products: list, pinned_names: list) -> list:
+    """Move pinned products to the front, in pin order (newest pin first)."""
+    if not pinned_names:
+        return products
+    order = {name: idx for idx, name in enumerate(pinned_names)}
+    pinned = [item for item in products if _base_name(item["name"]) in order]
+    rest = [item for item in products if _base_name(item["name"]) not in order]
+    pinned.sort(key=lambda item: order[_base_name(item["name"])])
+    return pinned + rest
+
 
 async def _populate_cache(cache: Cache, products: list) -> None:
     """Best-effort cache population. Never lets a Redis failure bubble up."""
@@ -50,6 +78,7 @@ async def get_products(
         exists = await cache.exists("products")
         if not exists:
             all_products = await BillzService().get_products()
+            all_products = _apply_pinned_order(all_products, await _get_pinned_names(cache))
             await _populate_cache(cache, all_products)
 
         if search and all_products is None:
@@ -106,6 +135,51 @@ async def get_products_by_category(
     page: int = 1,
 ):
     return await BillzService().get_products_by_category(category_ids, limit, page)
+
+
+@router.get("/pinned")
+async def get_pinned_products():
+    return {"pinned": await _get_pinned_names(Cache())}
+
+
+@router.post("/pin")
+async def pin_product(name: str):
+    """Pin a product to the top of the listing. The newest pin comes first."""
+    base = _base_name(name)
+    if not base:
+        raise HTTPException(status_code=422, detail="Empty product name")
+
+    cache = Cache()
+    try:
+        pipe = cache.redis_client.pipeline()
+        pipe.lrem(PINNED_KEY, 0, base)
+        pipe.lpush(PINNED_KEY, base)
+        # Drop the cached listing so the new order applies on the next request.
+        pipe.delete("products")
+        await pipe.execute()
+    except RedisError as exc:
+        logger.warning("Failed to pin product %s: %s", base, exc)
+        raise HTTPException(status_code=503, detail="Cache unavailable, try again later")
+
+    logger.info("Product pinned to top: %s", base)
+    return {"pinned": await _get_pinned_names(cache)}
+
+
+@router.delete("/pin")
+async def unpin_product(name: str):
+    base = _base_name(name)
+    cache = Cache()
+    try:
+        removed = await cache.redis_client.lrem(PINNED_KEY, 0, base)
+        await cache.redis_client.delete("products")
+    except RedisError as exc:
+        logger.warning("Failed to unpin product %s: %s", base, exc)
+        raise HTTPException(status_code=503, detail="Cache unavailable, try again later")
+
+    if not removed:
+        raise HTTPException(status_code=404, detail="Product is not pinned")
+    logger.info("Product unpinned: %s", base)
+    return {"pinned": await _get_pinned_names(cache)}
 
 
 @router.get("/{product_id}")
